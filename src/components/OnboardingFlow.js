@@ -1,18 +1,15 @@
 "use client";
 
-import { useState, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { 
-  X, 
-  CheckCircle, 
-  Circle, 
-  ExternalLink, 
+import { useSource } from '../contexts/SourcesContext';
+import {
+  X,
   Upload,
   Link as LinkIcon,
   FileText,
   Globe,
   ArrowRight,
-  Sparkles,
   PlusCircle,
   File,
   AppWindow
@@ -20,11 +17,30 @@ import {
 
 export default function OnboardingFlow() {
   const { completeOnboarding } = useAuth();
+  const {
+    getSourcesByType,
+    addLinkSource,
+    uploadFileSource,
+    addConnectorSource,
+    removeSource,
+    loading: sourcesLoading
+  } = useSource();
   const [activeTab, setActiveTab] = useState('links');
   const [url, setUrl] = useState('');
   const fileInputRef = useRef(null);
-  const [connectedSources, setConnectedSources] = useState(new Set());
-  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const isBusy = isProcessing || sourcesLoading;
+
+  const linkSources = getSourcesByType('links');
+  const fileSources = getSourcesByType('files');
+  const connectorSources = getSourcesByType('connectors');
+  const connectedConnectorIds = useMemo(
+    () => new Set(connectorSources
+      .filter(source => source.connectorId)
+      .map(source => source.connectorId)
+    ),
+    [connectorSources]
+  );
   
   // Tabs for the left navigation
   const tabs = [
@@ -78,47 +94,77 @@ export default function OnboardingFlow() {
     }
   ];
 
-  const handleConnectorToggle = (connectorId) => {
-    const newConnected = new Set(connectedSources);
-    if (newConnected.has(connectorId)) {
-      newConnected.delete(connectorId);
-    } else {
-      newConnected.add(connectorId);
-    }
-    setConnectedSources(newConnected);
-  };
-
-  const handleFileUpload = (event) => {
-    const files = Array.from(event.target.files);
-    setUploadedFiles(prev => [...prev, ...files.map(file => ({
-      id: Date.now() + Math.random(),
-      name: file.name,
-      size: file.size,
-      type: file.type
-    }))]);
-  };
-
-  const handleUrlSubmit = (e) => {
-    e.preventDefault();
-    if (url.trim()) {
-      // Simple URL validation
-      let validUrl = url;
-      if (!validUrl.startsWith('http://') && !validUrl.startsWith('https://')) {
-        validUrl = 'https://' + validUrl;
+  const handleConnectorToggle = async (connector) => {
+    const isConnected = connectedConnectorIds.has(connector.id);
+    try {
+      setIsProcessing(true);
+      if (isConnected) {
+        const existing = connectorSources.find(source => source.connectorId === connector.id);
+        if (existing) {
+          await removeSource(existing.id);
+        }
+      } else {
+        await addConnectorSource(connector.id, connector.name);
       }
+    } catch (error) {
+      alert(`Failed to ${isConnected ? 'disconnect' : 'connect'} ${connector.name}: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
-      setUploadedFiles(prev => [...prev, {
-        id: Date.now() + Math.random(),
-        name: validUrl,
-        type: 'url'
-      }]);
+  const handleFileUpload = async (event) => {
+    const files = Array.from(event.target.files || []);
+    if (files.length === 0) return;
+
+    try {
+      setIsProcessing(true);
+      for (const file of files) {
+        await uploadFileSource(file);
+      }
+    } catch (error) {
+      alert('Failed to upload file: ' + error.message);
+    } finally {
+      setIsProcessing(false);
+      if (event?.target) {
+        event.target.value = '';
+      }
+    }
+  };
+
+  const handleUrlSubmit = async (e) => {
+    e.preventDefault();
+    if (!url.trim()) return;
+
+    try {
+      setIsProcessing(true);
+      await addLinkSource(url);
       setUrl('');
+    } catch (error) {
+      alert('Failed to add link: ' + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
   const triggerFileInput = () => {
+    if (isBusy) return;
     if (fileInputRef.current) {
       fileInputRef.current.click();
+    }
+  };
+
+  const handleRemoveSource = async (source) => {
+    if (!source) return;
+    if (!confirm(`Remove ${source.name || source.fileName || 'this source'}?`)) return;
+
+    try {
+      setIsProcessing(true);
+      await removeSource(source.id);
+    } catch (error) {
+      alert('Failed to remove source: ' + error.message);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -164,41 +210,54 @@ export default function OnboardingFlow() {
               placeholder="Enter a URL (e.g., https://example.com)"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
+              disabled={isBusy}
             />
-            <button type="submit" className="url-add-button">
+            <button type="submit" className="url-add-button" disabled={isBusy}>
               <PlusCircle size={18} />
             </button>
           </div>
         </form>
-        
-        {uploadedFiles.filter(file => file.type === 'url').length > 0 && (
+
+        {sourcesLoading ? (
           <div className="urls-list">
             <h3 className="urls-list-title">Added Links</h3>
             <div className="urls-list-items">
-              {uploadedFiles
-                .filter(file => file.type === 'url')
-                .map((urlItem) => (
-                  <div key={urlItem.id} className="url-item">
-                    <Globe size={16} className="url-item-icon" />
-                    <a href={urlItem.name} target="_blank" rel="noopener noreferrer" className="url-item-link">
-                      {urlItem.name}
-                    </a>
-                    <button
-                      className="url-item-remove"
-                      onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== urlItem.id))}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                ))
-              }
+              <div className="url-item">Loading your links...</div>
+            </div>
+          </div>
+        ) : linkSources.length > 0 ? (
+          <div className="urls-list">
+            <h3 className="urls-list-title">Added Links</h3>
+            <div className="urls-list-items">
+              {linkSources.map((urlItem) => (
+                <div key={urlItem.id} className="url-item">
+                  <Globe size={16} className="url-item-icon" />
+                  <a href={urlItem.url} target="_blank" rel="noopener noreferrer" className="url-item-link">
+                    {urlItem.name || urlItem.url}
+                  </a>
+                  <button
+                    className="url-item-remove"
+                    onClick={() => handleRemoveSource(urlItem)}
+                    disabled={isBusy}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="urls-list">
+            <h3 className="urls-list-title">Added Links</h3>
+            <div className="urls-list-items">
+              <div className="url-item">No links added yet.</div>
             </div>
           </div>
         )}
       </div>
     );
   };
-  
+
   // Render content for the Files tab
   const renderFilesContent = () => {
     return (
@@ -206,7 +265,20 @@ export default function OnboardingFlow() {
         <h2 className="onboarding-tab-title">Upload Files</h2>
         <p className="onboarding-tab-description">Add documents, spreadsheets, images, or any other files you'd like to analyze</p>
         
-        <div className="file-dropzone" onClick={triggerFileInput}>
+        <div
+          className={`file-dropzone ${isBusy ? 'disabled' : ''}`}
+          onClick={triggerFileInput}
+          onKeyDown={(event) => {
+            if (isBusy) return;
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              triggerFileInput();
+            }
+          }}
+          role="button"
+          tabIndex={isBusy ? -1 : 0}
+          aria-disabled={isBusy}
+        >
           <div className="file-dropzone-icon">
             <Upload size={32} />
           </div>
@@ -220,36 +292,50 @@ export default function OnboardingFlow() {
             style={{ display: 'none' }}
           />
         </div>
-        
-        {uploadedFiles.filter(file => file.type !== 'url').length > 0 && (
+
+        {sourcesLoading ? (
           <div className="files-list-container">
             <h3 className="files-list-title">Uploaded Files</h3>
             <div className="files-list-items">
-              {uploadedFiles
-                .filter(file => file.type !== 'url')
-                .map((file) => (
-                  <div key={file.id} className="file-list-item">
-                    <FileText size={16} className="file-list-item-icon" />
-                    <div className="file-list-item-details">
-                      <span className="file-list-item-name">{file.name}</span>
-                      <span className="file-list-item-size">{formatFileSize(file.size)}</span>
-                    </div>
-                    <button
-                      className="file-list-item-remove"
-                      onClick={() => setUploadedFiles(prev => prev.filter(f => f.id !== file.id))}
-                    >
-                      <X size={14} />
-                    </button>
+              <div className="file-list-item">Loading your files...</div>
+            </div>
+          </div>
+        ) : fileSources.length > 0 ? (
+          <div className="files-list-container">
+            <h3 className="files-list-title">Uploaded Files</h3>
+            <div className="files-list-items">
+              {fileSources.map((file) => (
+                <div key={file.id} className="file-list-item">
+                  <FileText size={16} className="file-list-item-icon" />
+                  <div className="file-list-item-details">
+                    <span className="file-list-item-name">{file.fileName || file.name}</span>
+                    {file.fileSize ? (
+                      <span className="file-list-item-size">{formatFileSize(file.fileSize)}</span>
+                    ) : null}
                   </div>
-                ))
-              }
+                  <button
+                    className="file-list-item-remove"
+                    onClick={() => handleRemoveSource(file)}
+                    disabled={isBusy}
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="files-list-container">
+            <h3 className="files-list-title">Uploaded Files</h3>
+            <div className="files-list-items">
+              <div className="file-list-item">No files uploaded yet.</div>
             </div>
           </div>
         )}
       </div>
     );
   };
-  
+
   // Render content for the Connectors tab
   const renderConnectorsContent = () => {
     const availableConnectors = connectors.filter(c => c.status === 'available');
@@ -281,10 +367,11 @@ export default function OnboardingFlow() {
                   </div>
                 </div>
                 <button
-                  className={`connector-list-button ${connectedSources.has(connector.id) ? 'connected' : ''}`}
-                  onClick={() => handleConnectorToggle(connector.id)}
+                  className={`connector-list-button ${connectedConnectorIds.has(connector.id) ? 'connected' : ''}`}
+                  onClick={() => handleConnectorToggle(connector)}
+                  disabled={isBusy}
                 >
-                  {connectedSources.has(connector.id) ? 'Connected' : 'Connect'}
+                  {connectedConnectorIds.has(connector.id) ? 'Connected' : 'Connect'}
                 </button>
               </div>
             ))}
