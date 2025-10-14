@@ -111,6 +111,9 @@ function AgentView({ message, setMessage, isLoading, onSubmit }) {
       alert('Failed to upload file: ' + error.message);
     } finally {
       setIsAddingSource(false);
+      if (event?.target) {
+        event.target.value = '';
+      }
     }
   };
 

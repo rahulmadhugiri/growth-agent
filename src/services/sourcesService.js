@@ -141,8 +141,10 @@ export async function uploadFile(userId, file) {
     const filePath = `users/${userId}/files/${fileName}`;
     const storageRef = ref(storage, filePath);
 
-    // Upload file
-    const snapshot = await uploadBytes(storageRef, file);
+    const normalizedType = (file.type || 'application/octet-stream').toLowerCase();
+    const metadata = { contentType: normalizedType };
+
+    const snapshot = await uploadBytes(storageRef, file, metadata);
     const fileUrl = await getDownloadURL(snapshot.ref);
 
     // Add to Firestore
@@ -150,11 +152,11 @@ export async function uploadFile(userId, file) {
       userId,
       type: 'files',
       name: file.name,
-      icon: getFileIcon(file.type),
+      icon: getFileIcon(normalizedType),
       fileUrl,
       fileName: file.name,
       fileSize: file.size,
-      fileType: file.type,
+      fileType: normalizedType,
       storagePath: filePath,
       embedded: false,
       createdAt: serverTimestamp(),
@@ -176,13 +178,14 @@ export async function uploadFile(userId, file) {
  * Get icon based on file type
  */
 function getFileIcon(fileType) {
-  if (fileType.startsWith('image/')) return '🖼️';
-  if (fileType.startsWith('video/')) return '🎥';
-  if (fileType.includes('pdf')) return '📄';
-  if (fileType.includes('word') || fileType.includes('document')) return '📝';
-  if (fileType.includes('sheet') || fileType.includes('excel')) return '📊';
-  if (fileType.includes('presentation') || fileType.includes('powerpoint')) return '📽️';
-  if (fileType.includes('text')) return '📃';
+  const normalizedType = (fileType || '').toLowerCase();
+  if (normalizedType.startsWith('image/')) return '🖼️';
+  if (normalizedType.startsWith('video/')) return '🎥';
+  if (normalizedType.includes('pdf')) return '📄';
+  if (normalizedType.includes('word') || normalizedType.includes('document')) return '📝';
+  if (normalizedType.includes('sheet') || normalizedType.includes('excel')) return '📊';
+  if (normalizedType.includes('presentation') || normalizedType.includes('powerpoint')) return '📽️';
+  if (normalizedType.includes('text')) return '📃';
   return '📁';
 }
 
