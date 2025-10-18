@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, collection, query, where, getDocs } from 'firebase/firestore';
-import app from '../../../../lib/firebase';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { db } from '../../../../lib/firebase-admin';
 
-const db = getFirestore(app);
+// Using server-specific Firebase initialization
 
 // Get TikTok videos using stored access token
 export async function GET(request) {

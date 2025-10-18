@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, doc, setDoc, collection } from 'firebase/firestore';
-import app from '../../../../../lib/firebase';
+import { doc, setDoc, collection } from 'firebase/firestore';
+import { db } from '../../../../../lib/firebase-admin';
 
-const db = getFirestore(app);
+// Using server-specific Firebase initialization
 
 const TIKTOK_CLIENT_KEY = process.env.TIKTOK_CLIENT_KEY;
 const TIKTOK_CLIENT_SECRET = process.env.TIKTOK_CLIENT_SECRET;

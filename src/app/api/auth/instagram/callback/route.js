@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
-import { getFirestore, doc, setDoc, collection } from 'firebase/firestore';
-import app from '../../../../../lib/firebase';
+import { doc, setDoc, collection } from 'firebase/firestore';
+import { db } from '../../../../../lib/firebase-admin';
 
-const db = getFirestore(app);
+// Using server-specific Firebase initialization
 
 const INSTAGRAM_CLIENT_ID = process.env.INSTAGRAM_CLIENT_ID;
 const INSTAGRAM_CLIENT_SECRET = process.env.INSTAGRAM_CLIENT_SECRET;
