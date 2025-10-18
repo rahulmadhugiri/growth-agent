@@ -14,6 +14,30 @@ import {
 
 const SourcesContext = createContext();
 
+async function validateLinkUrlReachable(rawUrl) {
+  const response = await fetch('/api/validate-url', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ url: rawUrl })
+  });
+
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // Ignore JSON parsing errors; will handle below
+  }
+
+  if (!response.ok || !payload?.valid) {
+    const message = payload?.message || 'Unable to validate link destination.';
+    throw new Error(message);
+  }
+
+  return payload.normalizedUrl || rawUrl;
+}
+
 export function useSource() {
   const context = useContext(SourcesContext);
   if (!context) {
@@ -87,12 +111,13 @@ export function SourcesProvider({ children }) {
 
     try {
       setError(null);
+      const validatedUrl = await validateLinkUrlReachable(url);
 
       // Extract metadata from URL
-      const metadata = await extractLinkMetadata(url);
+      const metadata = await extractLinkMetadata(validatedUrl);
 
       // Add to Firebase
-      const result = await addLink(currentUser.uid, url, metadata);
+      const result = await addLink(currentUser.uid, validatedUrl, metadata);
 
       // Reload sources
       await loadSources();

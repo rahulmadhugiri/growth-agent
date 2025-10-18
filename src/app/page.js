@@ -7,7 +7,7 @@ import SplashPage from "../components/SplashPage";
 import OnboardingFlow from "../components/OnboardingFlow";
 import SettingsModal from "../components/SettingsModal";
 import ThemeSwitcher from "../components/ThemeSwitcher";
-import { Settings, LogOut, Bot, BarChart3, ArrowUp, Plus, Search, PanelLeft, Database, Plug, Grid2X2, Clock4, X  } from "lucide-react";
+import { Settings, LogOut, Bot, BarChart3, ArrowUp, Plus, Search, PanelLeft, Database, Plug, Grid2X2, Clock4, X, Inbox, Instagram, Video } from "lucide-react";
 import { Line } from 'react-chartjs-2';
 import { 
   Chart as ChartJS, 
@@ -50,7 +50,16 @@ function Avatar({ name = "Guest", photoURL }) {
 }
 
 // Agent View Component (Codex-style)
-function AgentView({ message, setMessage, isLoading, onSubmit }) {
+function AgentView({
+  message,
+  setMessage,
+  isLoading,
+  response,
+  error,
+  answerSources,
+  metadata,
+  onSubmit
+}) {
   const textAreaRef = useRef(null);
   const tabsRef = useRef(null);
   const drawerTabsRef = useRef(null);
@@ -70,7 +79,7 @@ function AgentView({ message, setMessage, isLoading, onSubmit }) {
   const [showAddLinkModal, setShowAddLinkModal] = useState(false);
 
   // Get sources from context
-  const { sources, loading: sourcesLoading, removeSource, addLinkSource, uploadFileSource, getSourcesByType } = useSource();
+  const { loading: sourcesLoading, removeSource, addLinkSource, uploadFileSource, getSourcesByType } = useSource();
 
   const sourceTabs = [
     { id: 'links', label: 'Links' },
@@ -135,6 +144,24 @@ function AgentView({ message, setMessage, isLoading, onSubmit }) {
     } else if (activeSourceTab === 'connectors') {
       alert('Connector integration coming soon!');
     }
+  };
+
+  const handleSourceClick = (source) => {
+    let targetUrl = null;
+
+    if (source.type === 'links' && source.url) {
+      targetUrl = source.url;
+    } else if (source.type === 'files' && source.fileUrl) {
+      targetUrl = source.fileUrl;
+    }
+
+    if (!targetUrl) return;
+
+    const resolvedUrl = /^https?:\/\//i.test(targetUrl)
+      ? targetUrl
+      : `https://${targetUrl}`;
+
+    window.open(resolvedUrl, '_blank', 'noopener,noreferrer');
   };
 
   const tasks = [
@@ -268,6 +295,81 @@ function AgentView({ message, setMessage, isLoading, onSubmit }) {
           </div>
         </div>
 
+        {(isLoading || response || error) && (
+          <div className="agent-response-card" aria-live="polite">
+            {isLoading ? (
+              <div className="agent-response-loading">
+                <div className="loading-spinner"></div>
+                <span>Thinking...</span>
+              </div>
+            ) : error ? (
+              <div className="agent-response-error">
+                {error}
+              </div>
+            ) : (
+              <>
+                <div className="agent-response-text">{response}</div>
+                {Array.isArray(answerSources) && answerSources.length > 0 && (
+                  <div className="agent-response-sources">
+                    <div className="agent-response-sources-title">Sources</div>
+                    <ul>
+                      {answerSources.slice(0, 3).map((item, index) => {
+                        let hostLabel = 'Open source ↗';
+                        if (item.url) {
+                          try {
+                            const urlObj = new URL(item.url);
+                            hostLabel = `${urlObj.hostname.replace(/^www\./, '')} ↗`;
+                          } catch (err) {
+                            hostLabel = 'Open source ↗';
+                          }
+                        }
+                        const typeLabel = item.type
+                          ? item.type
+                          : null;
+
+                        return (
+                          <li key={item.id || item.url || item.title || `source-${index}`}>
+                            <span className="agent-response-source-label">
+                              {item.title || 'Referenced chunk'}
+                            </span>
+                            {item.url && (
+                              <a
+                                href={item.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {hostLabel}
+                              </a>
+                            )}
+                            {typeLabel && (
+                              <span className="agent-response-source-tag">
+                                – {typeLabel}
+                              </span>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+                {metadata && (
+                  <div className="agent-response-meta">
+                    <span>
+                      Built from {metadata.urls_touched ?? 0} pages
+                      {Array.isArray(metadata.page_types) && metadata.page_types.length > 0 && (
+                        <> across {metadata.page_types.length} content types ({metadata.page_types.join(', ')})</>
+                      )}
+                      {typeof metadata.unique_quotes === 'number' && metadata.unique_quotes > 0 && (
+                        <> • {metadata.unique_quotes} unique quotes</>
+                      )}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
         {/* Task Tabs */}
         <div className="codex-tabs-container">
           <div className="codex-tabs" ref={tabsRef}>
@@ -380,8 +482,10 @@ function AgentView({ message, setMessage, isLoading, onSubmit }) {
               {/* Empty State */}
               {!sourcesLoading && filteredSources.length === 0 && (
                 <div className="sources-empty">
+                  <div className="sources-empty-icon" aria-hidden>
+                    <Inbox size={25} />
+                  </div>
                   <p>No {activeSourceTab} added yet.</p>
-                  <p className="sources-empty-hint">Click "Add New Source" to get started.</p>
                 </div>
               )}
 
@@ -392,6 +496,7 @@ function AgentView({ message, setMessage, isLoading, onSubmit }) {
                     <div
                       key={source.id}
                       className="source-item"
+                      onClick={() => handleSourceClick(source)}
                       onMouseEnter={() => setHoveredSourceId(source.id)}
                       onMouseLeave={() => setHoveredSourceId(null)}
                     >
@@ -402,7 +507,10 @@ function AgentView({ message, setMessage, isLoading, onSubmit }) {
                       {hoveredSourceId === source.id && (
                         <button
                           className="source-delete-btn"
-                          onClick={() => handleDeleteSource(source.id)}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleDeleteSource(source.id);
+                          }}
                           aria-label={`Delete ${source.name}`}
                         >
                           <X size={16} />
@@ -493,6 +601,244 @@ function AgentView({ message, setMessage, isLoading, onSubmit }) {
   );
 }
 
+function SoraView({
+  prompt,
+  setPrompt,
+  isGenerating,
+  videoUrl,
+  error,
+  isSaving,
+  saveError,
+  rawJob,
+  onSubmit
+}) {
+  const textAreaRef = useRef(null);
+  const [selectedDuration, setSelectedDuration] = useState(4);
+  const availableDurations = [4, 8, 12]; // Sora API only accepts '4', '8', or '12'
+
+  useEffect(() => {
+    if (textAreaRef.current) {
+      textAreaRef.current.style.height = "auto";
+      textAreaRef.current.style.height = Math.min(textAreaRef.current.scrollHeight, 200) + "px";
+    }
+  }, [prompt]);
+
+  const handleSubmitWithDuration = (e) => {
+    // Pass the selected duration to the parent handler
+    onSubmit(e, selectedDuration);
+  };
+
+  return (
+    <div className="codex-agent-view">
+      <div className="codex-center-content">
+        <div className="codex-task-input-wrapper">
+          <div className="codex-task-input-container">
+            <textarea
+              ref={textAreaRef}
+              className="codex-task-input"
+              placeholder="Describe the video you want Sora to create..."
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmitWithDuration(e);
+                }
+              }}
+              disabled={isGenerating}
+              rows={3}
+            />
+
+            <div className="codex-input-controls">
+              <div className="codex-selectors">
+                <div className="sora-duration-selector">
+                  <select 
+                    value={selectedDuration}
+                    onChange={(e) => setSelectedDuration(Number(e.target.value))}
+                    className="sora-duration-dropdown"
+                    disabled={isGenerating}
+                  >
+                    {availableDurations.map(duration => (
+                      <option key={duration} value={duration}>
+                        {duration} seconds
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="codex-submit-group">
+                <button
+                  className={`codex-submit-btn ${isGenerating ? "loading" : ""}`}
+                  onClick={handleSubmitWithDuration}
+                  disabled={!prompt.trim() || isGenerating}
+                >
+                  {isGenerating ? (
+                    <div className="loading-spinner"></div>
+                  ) : (
+                    <ArrowUp size={16} strokeWidth={2} />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="sora-output-card" aria-live="polite">
+          {isGenerating ? (
+            <div className="agent-response-loading">
+              <div className="loading-spinner"></div>
+              <span>Generating video...</span>
+            </div>
+          ) : error ? (
+            <div className="agent-response-error">
+              {error}
+            </div>
+          ) : videoUrl ? (
+            <div className="sora-video-wrapper">
+              <video
+                key={videoUrl}
+                src={videoUrl}
+                controls
+                playsInline
+                className="sora-video"
+                poster=""
+              />
+              {isSaving && (
+                <div className="sora-status-text">
+                  Uploading to Sources…
+                </div>
+              )}
+              {saveError && (
+                <div className="sora-status-text error">
+                  {saveError}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="sora-placeholder">
+              <p>Describe a scene, and Sora will generate a 9:16 video for you.</p>
+            </div>
+          )}
+          {(saveError || !videoUrl) && rawJob && (
+            <details className="sora-operation-details">
+              <summary>View job payload</summary>
+              <pre>{JSON.stringify(rawJob, null, 2)}</pre>
+            </details>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VeoView({
+  prompt,
+  setPrompt,
+  isGenerating,
+  videoUrl,
+  error,
+  isSaving,
+  saveError,
+  rawOperation,
+  onSubmit
+}) {
+  const textAreaRef = useRef(null);
+
+  useEffect(() => {
+    if (textAreaRef.current) {
+      textAreaRef.current.style.height = "auto";
+      textAreaRef.current.style.height = Math.min(textAreaRef.current.scrollHeight, 200) + "px";
+    }
+  }, [prompt]);
+
+  return (
+    <div className="codex-agent-view">
+      <div className="codex-center-content">
+        <div className="codex-task-input-wrapper">
+          <div className="codex-task-input-container">
+            <textarea
+              ref={textAreaRef}
+              className="codex-task-input"
+              placeholder="Describe the video you want Veo to create..."
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSubmit(e);
+                }
+              }}
+              disabled={isGenerating}
+              rows={3}
+            />
+
+            <div className="codex-input-controls">
+              <div className="codex-selectors" />
+              <div className="codex-submit-group">
+                <button
+                  className={`codex-submit-btn ${isGenerating ? "loading" : ""}`}
+                  onClick={onSubmit}
+                  disabled={!prompt.trim() || isGenerating}
+                >
+                  {isGenerating ? (
+                    <div className="loading-spinner"></div>
+                  ) : (
+                    <ArrowUp size={16} strokeWidth={2} />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="veo-output-card" aria-live="polite">
+          {isGenerating ? (
+            <div className="agent-response-loading">
+              <div className="loading-spinner"></div>
+              <span>Generating video...</span>
+            </div>
+          ) : error ? (
+            <div className="agent-response-error">
+              {error}
+            </div>
+          ) : videoUrl ? (
+            <div className="veo-video-wrapper">
+              <video
+                key={videoUrl}
+                src={videoUrl}
+                controls
+                playsInline
+                className="veo-video"
+                poster=""
+              />
+              {isSaving && (
+                <div className="veo-status-text">
+                  Uploading to Sources…
+                </div>
+              )}
+              {saveError && (
+                <div className="veo-status-text error">
+                  {saveError}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="veo-placeholder">
+              <p>Describe a scene, and Veo will generate a 9:16 video for you.</p>
+            </div>
+          )}
+          {(saveError || !videoUrl) && rawOperation && (
+            <details className="veo-operation-details">
+              <summary>View operation payload</summary>
+              <pre>{JSON.stringify(rawOperation, null, 2)}</pre>
+            </details>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Dashboard View Component
 function DashboardView({ activeSection, onChangeSection }) {
   const sidebarRef = useRef(null);
@@ -543,6 +889,13 @@ function DashboardView({ activeSection, onChangeSection }) {
           >
             <Clock4 size={20} />
             Activity
+          </button>
+          <button
+            className={`nav-item ${activeSection === "connectors" ? "active" : ""}`}
+            onClick={() => onChangeSection("connectors")}
+          >
+            <Plug size={20} />
+            Connectors
           </button>
           <button
             className={`nav-item ${activeSection === "settings" ? "active" : ""}`}
@@ -952,6 +1305,573 @@ function ActivityView() {
   );
 }
 
+// Connectors View
+function ConnectorsView() {
+  const { currentUser } = useAuth();
+  const { getSourcesByType, removeSource } = useSource();
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState(null);
+  const [instagramMetrics, setInstagramMetrics] = useState(null);
+  const [recentPosts, setRecentPosts] = useState([]);
+  const [showConnectionForm, setShowConnectionForm] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Check for URL params on component mount (for OAuth callback)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    const success = urlParams.get('success');
+    
+    if (error) {
+      setConnectError(decodeURIComponent(error));
+    }
+    
+    if (success === 'true') {
+      // Clear the URL params after successful connection
+      window.history.replaceState({}, document.title, '/dashboard?section=connectors');
+    }
+  }, []);
+  
+  // Get existing Instagram connectors
+  const instagramConnectors = getSourcesByType("connectors").filter(
+    (connector) => connector.connectorId === "instagram"
+  );
+  
+  const hasInstagramConnector = instagramConnectors.length > 0;
+  
+  // Effect to fetch Instagram data when a connector is present
+  useEffect(() => {
+    if (hasInstagramConnector && currentUser) {
+      fetchRealInstagramData();
+      setShowConnectionForm(false);
+    } else {
+      setShowConnectionForm(true);
+      setInstagramMetrics(null);
+      setRecentPosts([]);
+    }
+  }, [hasInstagramConnector, currentUser]);
+  
+  const handleConnectInstagram = async (e) => {
+    e.preventDefault();
+    setIsConnecting(true);
+    setConnectError(null);
+    
+    try {
+      // Start the real Instagram OAuth flow by getting the auth URL
+      const response = await fetch('/api/auth/instagram');
+      const data = await response.json();
+      
+      if (!data.authUrl) {
+        throw new Error('Failed to get Instagram authorization URL');
+      }
+      
+      // Add the current user ID to the state parameter
+      const authUrlWithState = `${data.authUrl}&state=${currentUser.uid}`;
+      
+      // Redirect to Instagram for authorization
+      window.location.href = authUrlWithState;
+    } catch (error) {
+      console.error("Instagram connection error:", error);
+      setConnectError(error.message || "Failed to connect Instagram account");
+      setIsConnecting(false);
+    }
+  };
+  
+  const fetchRealInstagramData = async () => {
+    if (!currentUser || !hasInstagramConnector) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // Fetch profile data from our API endpoint
+      const profileResponse = await fetch(`/api/instagram/profile?userId=${currentUser.uid}`);
+      const profileData = await profileResponse.json();
+      
+      if (profileResponse.ok) {
+        // Create metrics object with available data
+        // Note: Basic Display API doesn't provide followers/following counts
+        // We'll use placeholder values for those
+        setInstagramMetrics({
+          username: profileData.username,
+          name: profileData.username,
+          followers: '—', // Not available in Basic Display API
+          following: '—', // Not available in Basic Display API
+          posts: profileData.posts || 0,
+          engagement: '—', // Cannot calculate without followers
+          bio: profileData.bio || 'No bio available'
+        });
+      } else {
+        console.error("Failed to fetch Instagram profile:", profileData.error);
+      }
+      
+      // Fetch recent media
+      const mediaResponse = await fetch(`/api/instagram/media?userId=${currentUser.uid}&limit=3`);
+      const mediaData = await mediaResponse.json();
+      
+      if (mediaResponse.ok && mediaData.posts?.length) {
+        // Format the posts data
+        const formattedPosts = mediaData.posts.map(post => {
+          // Format the date
+          const postDate = new Date(post.timestamp);
+          const now = new Date();
+          const diffDays = Math.floor((now - postDate) / (1000 * 60 * 60 * 24));
+          
+          let dateText;
+          if (diffDays === 0) {
+            dateText = 'Today';
+          } else if (diffDays === 1) {
+            dateText = 'Yesterday';
+          } else if (diffDays < 7) {
+            dateText = `${diffDays} days ago`;
+          } else if (diffDays < 30) {
+            dateText = `${Math.floor(diffDays / 7)} weeks ago`;
+          } else {
+            dateText = `${Math.floor(diffDays / 30)} months ago`;
+          }
+          
+          return {
+            id: post.id,
+            imageUrl: post.mediaUrl,
+            likes: post.likes,
+            comments: post.comments,
+            caption: post.caption || '',
+            date: dateText
+          };
+        });
+        
+        setRecentPosts(formattedPosts);
+      } else {
+        // If API failed or no posts, show a message
+        setRecentPosts([]);
+        console.error("Failed to fetch Instagram media:", mediaData.error);
+      }
+    } catch (error) {
+      console.error("Error fetching Instagram data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleDisconnect = async () => {
+    if (!hasInstagramConnector) return;
+    
+    if (confirm("Are you sure you want to disconnect your Instagram account?")) {
+      try {
+        await removeSource(instagramConnectors[0].id);
+      } catch (error) {
+        console.error("Error disconnecting Instagram:", error);
+        alert("Failed to disconnect Instagram account");
+      }
+    }
+  };
+  
+  return (
+    <div className="dashboard-view">
+      <div className="view-header">
+        <h1>Connectors</h1>
+      </div>
+      <p className="connectors-subtitle">
+        Connect your social media accounts to track performance metrics
+      </p>
+      
+      <div className="connectors-container">
+        {/* Instagram Connector */}
+        <div className="connector-card instagram-connector">
+          <div className="connector-header">
+            <div className="connector-icon">
+              <Instagram size={24} />
+            </div>
+            <h2>Instagram</h2>
+            {hasInstagramConnector && (
+              <div className="connector-connected-badge">
+                Connected
+              </div>
+            )}
+          </div>
+          
+          {showConnectionForm ? (
+            <div className="connector-content">
+              <p className="connector-description">
+                Connect your Instagram account to track followers, engagement, and post performance.
+              </p>
+              
+              <form className="connector-form" onSubmit={handleConnectInstagram}>
+                <p className="connector-oauth-info">
+                  Click below to authorize access to your Instagram account. You will be redirected to Instagram to complete the connection.
+                </p>
+                
+                {connectError && (
+                  <div className="connector-error">{connectError}</div>
+                )}
+                
+                <button
+                  type="submit"
+                  className="connector-button"
+                  disabled={isConnecting}
+                >
+                  {isConnecting ? "Connecting..." : "Connect with Instagram"}
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="connector-content">
+              {instagramMetrics && (
+                <>
+                  <div className="instagram-profile">
+                    <div className="instagram-profile-header">
+                      <div className="instagram-avatar">
+                        {instagramMetrics.username[0].toUpperCase()}
+                      </div>
+                      <div className="instagram-profile-info">
+                        <h3>{instagramMetrics.username}</h3>
+                        <p className="instagram-bio">{instagramMetrics.bio}</p>
+                      </div>
+                    </div>
+                    
+                    <div className="instagram-metrics">
+                      <div className="instagram-metric">
+                        <div className="instagram-metric-value">{instagramMetrics.followers.toLocaleString()}</div>
+                        <div className="instagram-metric-label">Followers</div>
+                      </div>
+                      <div className="instagram-metric">
+                        <div className="instagram-metric-value">{instagramMetrics.following.toLocaleString()}</div>
+                        <div className="instagram-metric-label">Following</div>
+                      </div>
+                      <div className="instagram-metric">
+                        <div className="instagram-metric-value">{instagramMetrics.posts.toLocaleString()}</div>
+                        <div className="instagram-metric-label">Posts</div>
+                      </div>
+                      <div className="instagram-metric">
+                        <div className="instagram-metric-value">{instagramMetrics.engagement}</div>
+                        <div className="instagram-metric-label">Engagement</div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="instagram-recent-posts">
+                    <h3>Recent Posts</h3>
+                    <div className="instagram-posts-grid">
+                      {recentPosts.map(post => (
+                        <div key={post.id} className="instagram-post">
+                          <div className="instagram-post-image">
+                            <img src={post.imageUrl} alt="Instagram post" />
+                          </div>
+                          <div className="instagram-post-info">
+                            <div className="instagram-post-metrics">
+                              <span className="instagram-post-likes">❤️ {post.likes.toLocaleString()}</span>
+                              <span className="instagram-post-comments">💬 {post.comments.toLocaleString()}</span>
+                            </div>
+                            <div className="instagram-post-caption">{post.caption}</div>
+                            <div className="instagram-post-date">{post.date}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  
+                  <div className="connector-actions">
+                    <button
+                      className="connector-disconnect-button"
+                      onClick={handleDisconnect}
+                    >
+                      Disconnect Instagram
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* TikTok Connector */}
+        <div className="connector-card tiktok-connector">
+          <div className="connector-header">
+            <div className="connector-icon tiktok-icon">
+              <Video size={24} />
+            </div>
+            <h2>TikTok</h2>
+            <TikTokConnector currentUser={currentUser} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// TikTok Connector Component
+function TikTokConnector({ currentUser }) {
+  const { getSourcesByType, removeSource } = useSource();
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectError, setConnectError] = useState(null);
+  const [tiktokMetrics, setTiktokMetrics] = useState(null);
+  const [tiktokVideos, setTiktokVideos] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Get existing TikTok connectors
+  const tiktokConnectors = getSourcesByType("connectors").filter(
+    (connector) => connector.connectorId === "tiktok"
+  );
+  
+  const hasTiktokConnector = tiktokConnectors.length > 0;
+  
+  // Effect to fetch TikTok data when a connector is present
+  useEffect(() => {
+    if (hasTiktokConnector && currentUser) {
+      fetchTiktokData();
+    } else {
+      setTiktokMetrics(null);
+      setTiktokVideos([]);
+    }
+  }, [hasTiktokConnector, currentUser]);
+  
+  // Check for URL params on component mount (for OAuth callback)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    const success = urlParams.get('success');
+    
+    if (error) {
+      setConnectError(decodeURIComponent(error));
+    }
+    
+    if (success === 'true') {
+      // Clear the URL params after successful connection
+      window.history.replaceState({}, document.title, '/dashboard?section=connectors');
+    }
+  }, []);
+  
+  const handleConnectTikTok = async (e) => {
+    e.preventDefault();
+    setIsConnecting(true);
+    setConnectError(null);
+    
+    try {
+      // Start the TikTok OAuth flow by getting the auth URL
+      const response = await fetch('/api/auth/tiktok');
+      const data = await response.json();
+      
+      if (!data.authUrl) {
+        throw new Error('Failed to get TikTok authorization URL');
+      }
+      
+      // Add the current user ID to the state parameter
+      // In a real app, you would encode this securely
+      const authUrlWithState = `${data.authUrl}&state=${currentUser.uid}`;
+      
+      // Redirect to TikTok for authorization
+      window.location.href = authUrlWithState;
+    } catch (error) {
+      console.error("TikTok connection error:", error);
+      setConnectError(error.message || "Failed to connect TikTok account");
+      setIsConnecting(false);
+    }
+  };
+  
+  const fetchTiktokData = async () => {
+    if (!currentUser) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // Fetch profile data from our API endpoint
+      const profileResponse = await fetch(`/api/tiktok/profile?userId=${currentUser.uid}`);
+      const profileData = await profileResponse.json();
+      
+      if (profileResponse.ok) {
+        // Create metrics object with available data
+        setTiktokMetrics({
+          username: profileData.displayName || profileData.username || 'TikTok User',
+          avatarUrl: profileData.avatarUrl,
+          profileUrl: profileData.profileUrl,
+          isVerified: profileData.isVerified,
+          followers: profileData.followers || 0,
+          following: profileData.following || 0,
+          likes: profileData.likes || 0
+        });
+      } else {
+        console.error("Failed to fetch TikTok profile:", profileData.error);
+      }
+      
+      // Fetch videos
+      const videosResponse = await fetch(`/api/tiktok/videos?userId=${currentUser.uid}&limit=3`);
+      const videosData = await videosResponse.json();
+      
+      if (videosResponse.ok && videosData.videos?.length) {
+        setTiktokVideos(videosData.videos);
+      } else {
+        setTiktokVideos([]);
+        console.error("Failed to fetch TikTok videos:", videosData.error);
+      }
+    } catch (error) {
+      console.error("Error fetching TikTok data:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  const handleDisconnect = async () => {
+    if (!hasTiktokConnector) return;
+    
+    if (confirm("Are you sure you want to disconnect your TikTok account?")) {
+      try {
+        await removeSource(tiktokConnectors[0].id);
+      } catch (error) {
+        console.error("Error disconnecting TikTok:", error);
+        alert("Failed to disconnect TikTok account");
+      }
+    }
+  };
+  
+  if (hasTiktokConnector) {
+    return (
+      <>
+        <div className="connector-connected-badge">
+          Connected
+        </div>
+        
+        <div className="connector-content">
+          {isLoading ? (
+            <div className="connector-loading">Loading TikTok data...</div>
+          ) : tiktokMetrics ? (
+            <>
+              <div className="tiktok-profile">
+                <div className="tiktok-profile-header">
+                  {tiktokMetrics.avatarUrl ? (
+                    <img 
+                      src={tiktokMetrics.avatarUrl} 
+                      alt={tiktokMetrics.username} 
+                      className="tiktok-avatar" 
+                    />
+                  ) : (
+                    <div className="tiktok-avatar">
+                      {tiktokMetrics.username[0].toUpperCase()}
+                    </div>
+                  )}
+                  <div className="tiktok-profile-info">
+                    <h3>
+                      {tiktokMetrics.username}
+                      {tiktokMetrics.isVerified && (
+                        <span className="tiktok-verified-badge">✓</span>
+                      )}
+                    </h3>
+                    {tiktokMetrics.profileUrl && (
+                      <a 
+                        href={tiktokMetrics.profileUrl} 
+                        target="_blank"
+                        rel="noopener noreferrer" 
+                        className="tiktok-profile-link"
+                      >
+                        View Profile
+                      </a>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="tiktok-metrics">
+                  <div className="tiktok-metric">
+                    <div className="tiktok-metric-value">{tiktokMetrics.followers.toLocaleString()}</div>
+                    <div className="tiktok-metric-label">Followers</div>
+                  </div>
+                  <div className="tiktok-metric">
+                    <div className="tiktok-metric-value">{tiktokMetrics.following.toLocaleString()}</div>
+                    <div className="tiktok-metric-label">Following</div>
+                  </div>
+                  <div className="tiktok-metric">
+                    <div className="tiktok-metric-value">{tiktokMetrics.likes.toLocaleString()}</div>
+                    <div className="tiktok-metric-label">Likes</div>
+                  </div>
+                </div>
+              </div>
+              
+              {tiktokVideos.length > 0 ? (
+                <div className="tiktok-videos">
+                  <h3>Recent Videos</h3>
+                  <div className="tiktok-videos-grid">
+                    {tiktokVideos.map(video => (
+                      <div key={video.id} className="tiktok-video">
+                        <div className="tiktok-video-thumbnail">
+                          <img src={video.coverUrl} alt="TikTok video thumbnail" />
+                          {video.duration && (
+                            <span className="tiktok-video-duration">
+                              {Math.floor(video.duration)}s
+                            </span>
+                          )}
+                        </div>
+                        <div className="tiktok-video-info">
+                          <div className="tiktok-video-title">
+                            {video.title || video.description || "TikTok Video"}
+                          </div>
+                          <div className="tiktok-video-stats">
+                            <span className="tiktok-video-views">👁️ {video.stats.views.toLocaleString()}</span>
+                            <span className="tiktok-video-likes">❤️ {video.stats.likes.toLocaleString()}</span>
+                          </div>
+                          {video.shareUrl && (
+                            <a 
+                              href={video.shareUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="tiktok-video-link"
+                            >
+                              Watch on TikTok
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="tiktok-no-videos">
+                  <p>No videos found for this account.</p>
+                </div>
+              )}
+              
+              <div className="connector-actions">
+                <button
+                  className="connector-disconnect-button"
+                  onClick={handleDisconnect}
+                >
+                  Disconnect TikTok
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="connector-error">
+              Failed to load TikTok data. Please try reconnecting your account.
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+  
+  return (
+    <div className="connector-content">
+      <p className="connector-description">
+        Connect your TikTok account to track followers, views, and video performance.
+      </p>
+      
+      <form className="connector-form" onSubmit={handleConnectTikTok}>
+        <p className="connector-oauth-info">
+          Click below to authorize access to your TikTok account. You will be redirected to TikTok to complete the connection.
+        </p>
+        
+        {connectError && (
+          <div className="connector-error">{connectError}</div>
+        )}
+        
+        <button
+          type="submit"
+          className="connector-button"
+          disabled={isConnecting}
+        >
+          {isConnecting ? "Connecting..." : "Connect with TikTok"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 // Settings View
 function SettingsView() {
   return (
@@ -1079,14 +1999,33 @@ function SettingsView() {
 
 export default function Home() {
   const { currentUser, logout, isFirstTimeUser, loading } = useAuth();
+  const { uploadFileSource } = useSource();
   const [activeTab, setActiveTab] = useState("agent");
   const [message, setMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [agentResponse, setAgentResponse] = useState(null);
+  const [agentSources, setAgentSources] = useState([]);
+  const [agentError, setAgentError] = useState(null);
+  const [agentMetadata, setAgentMetadata] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const profileMenuRef = useRef(null);
   const profileBtnRef = useRef(null);
   const [dashboardSection, setDashboardSection] = useState("general"); // <-- add this
+  const [soraPrompt, setSoraPrompt] = useState("");
+  const [isSoraGenerating, setIsSoraGenerating] = useState(false);
+  const [soraVideoUrl, setSoraVideoUrl] = useState("");
+  const [soraError, setSoraError] = useState(null);
+  const [soraSaving, setSoraSaving] = useState(false);
+  const [soraSaveError, setSoraSaveError] = useState(null);
+  const [soraRawJob, setSoraRawJob] = useState(null);
+  const [veoPrompt, setVeoPrompt] = useState("");
+  const [isVeoGenerating, setIsVeoGenerating] = useState(false);
+  const [veoVideoUrl, setVeoVideoUrl] = useState("");
+  const [veoError, setVeoError] = useState(null);
+  const [veoSaving, setVeoSaving] = useState(false);
+  const [veoSaveError, setVeoSaveError] = useState(null);
+  const [veoRawOperation, setVeoRawOperation] = useState(null);
 
   
   // Close profile menu when clicking outside
@@ -1130,17 +2069,334 @@ export default function Home() {
   const userName = currentUser.displayName || currentUser.email?.split('@')[0] || "User";
   const userPhotoURL = currentUser.photoURL;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (message.trim()) {
-      console.log("Agent query:", message);
-      setIsLoading(true);
-      
-      // Simulate API call
-      setTimeout(() => {
-        setMessage("");
-        setIsLoading(false);
-      }, 2000);
+    const trimmed = message.trim();
+    if (!trimmed) return;
+
+    const detectAnalysisMode = (input) => {
+      const lower = input.toLowerCase();
+
+      if (
+        lower.startsWith('/discover') ||
+        lower.includes('prompt 1') ||
+        (lower.includes('summarize') &&
+          lower.includes('main topics') &&
+          lower.includes('core themes'))
+      ) {
+        return 'discover';
+      }
+
+      if (
+        lower.startsWith('/value') ||
+        lower.includes('prompt 2') ||
+        (lower.includes('value') &&
+          lower.includes('differentiation') &&
+          (lower.includes('positioning') || lower.includes('emotional appeal')))
+      ) {
+        return 'value';
+      }
+
+      if (
+        lower.startsWith('/story') ||
+        lower.includes('prompt 3') ||
+        lower.includes('craft a concise narrative') ||
+        (lower.includes('campaign summary') && lower.includes('quotes')) ||
+        lower.includes('concise narrative or campaign summary')
+      ) {
+        return 'story';
+      }
+
+      return null;
+    };
+
+    const DEFAULT_ANALYSIS_PROMPTS = {
+      discover:
+        "Without assuming any prior knowledge, analyze this content and summarize what it's about. Identify the main topics, recurring ideas, core themes, and the most common content types.",
+      value:
+        'Extract sentences or passages that express value, differentiation, or emotional appeal. Highlight product positioning, problems solved, outcomes, and summarize the strongest positioning angles.',
+      story:
+        "Using only this dataset, craft a concise narrative that explains who it's for, what it does, why it matters, and what makes it unique. Include 3–5 short quotes suitable for marketing copy."
+    };
+
+    const mode = detectAnalysisMode(trimmed);
+    let endpoint = '/api/agent/query';
+    let requestBody = { question: trimmed };
+
+    if (mode) {
+      endpoint = '/api/agent/analyze';
+
+      if (trimmed.startsWith('/')) {
+        const parts = trimmed.slice(1).split(/\s+/);
+        parts.shift();
+        const remainder = parts.join(' ').trim();
+        requestBody = {
+          mode,
+          question: remainder || DEFAULT_ANALYSIS_PROMPTS[mode]
+        };
+      } else {
+        requestBody = {
+          mode,
+          question: trimmed
+        };
+      }
+    }
+
+    setIsLoading(true);
+    setAgentError(null);
+    setAgentResponse(null);
+    setAgentSources([]);
+    setAgentMetadata(null);
+
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        // ignore JSON parse errors; handled below
+      }
+
+      if (!response.ok || !data) {
+        const message =
+          data?.error ||
+          'Unable to generate an answer right now. Please try again.';
+        throw new Error(message);
+      }
+
+      setAgentResponse(data.answer || data.summary || 'No answer returned.');
+      setAgentSources(Array.isArray(data.sources) ? data.sources : []);
+      setAgentMetadata(data.metadata || null);
+      setMessage("");
+    } catch (error) {
+      console.error("Agent query failed:", error);
+      setAgentError(
+        error?.message ||
+          'Something went wrong while generating an answer. Please try again.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSoraSubmit = async (e, duration = 4) => {
+    e.preventDefault?.();
+    const trimmed = soraPrompt.trim();
+    if (!trimmed) return;
+
+    setIsSoraGenerating(true);
+    setSoraError(null);
+    setSoraVideoUrl("");
+    setSoraSaveError(null);
+    setSoraRawJob(null);
+    setSoraSaving(false);
+
+    try {
+      const response = await fetch('/api/sora/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          prompt: trimmed,
+          duration: duration 
+        })
+      });
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        // ignore
+      }
+
+      if (!response.ok || !data) {
+        const message =
+          data?.error ||
+          'Unable to generate a video right now. Please try again.';
+        throw new Error(message);
+      }
+
+      setSoraPrompt("");
+      setSoraRawJob(data.rawJob || null);
+      setIsSoraGenerating(false);
+
+      if (data.videoUrl) {
+        const playableUrl = data.videoUrl;
+        setSoraSaving(true);
+
+        (async () => {
+          try {
+            const proxyUrl = `/api/sora/download?url=${encodeURIComponent(playableUrl)}`;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 60000);
+            const downloadResponse = await fetch(proxyUrl, {
+              signal: controller.signal
+            });
+            clearTimeout(timeout);
+
+            if (!downloadResponse.ok) {
+              throw new Error('Failed to download generated video for display.');
+            }
+
+            const blob = await downloadResponse.blob();
+            
+            // Create a local blob URL for immediate display
+            const localBlobUrl = URL.createObjectURL(blob);
+            setSoraVideoUrl(localBlobUrl);
+            
+            // Upload to Firebase in the background
+            const extension =
+              (blob.type && blob.type.split('/')[1]) || 'mp4';
+            const cleanedExt = extension.replace(/[^a-z0-9]/gi, '') || 'mp4';
+            const fileName = `sora-video-${Date.now()}.${cleanedExt}`;
+            const file = new File([blob], fileName, {
+              type: blob.type || 'video/mp4'
+            });
+            const uploadResult = await uploadFileSource(file);
+
+            if (uploadResult?.fileUrl) {
+              // Clean up the blob URL and use the Firebase URL
+              URL.revokeObjectURL(localBlobUrl);
+              setSoraVideoUrl(uploadResult.fileUrl);
+            } else {
+              setSoraSaveError(
+                'Uploaded video to Firebase sources, but no download URL was returned. Using local preview.'
+              );
+            }
+          } catch (error) {
+            console.error('Failed to process Sora video:', error);
+            setSoraSaveError(
+              error?.message ||
+                'Failed to download or upload the generated video.'
+            );
+          } finally {
+            setSoraSaving(false);
+          }
+        })();
+      } else {
+        setSoraError(
+          'Sora finished but did not provide a downloadable URL. See job details below.'
+        );
+      }
+    } catch (error) {
+      console.error("Sora generation failed:", error);
+      setSoraError(
+        error?.message ||
+          'Something went wrong while generating your video. Please try again.'
+      );
+      setIsSoraGenerating(false);
+      setSoraSaving(false);
+    }
+  };
+
+  const handleVeoSubmit = async (e) => {
+    e.preventDefault?.();
+    const trimmed = veoPrompt.trim();
+    if (!trimmed) return;
+
+    setIsVeoGenerating(true);
+    setVeoError(null);
+    setVeoVideoUrl("");
+    setVeoSaveError(null);
+    setVeoRawOperation(null);
+
+    try {
+      const response = await fetch('/api/veo/generate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ prompt: trimmed })
+      });
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch {
+        // ignore
+      }
+
+      if (!response.ok || !data) {
+        const message =
+          data?.error ||
+          'Unable to generate a video right now. Please try again.';
+        throw new Error(message);
+      }
+
+      setVeoPrompt("");
+      setVeoRawOperation(data.rawOperation || null);
+
+      setIsVeoGenerating(false);
+
+      if (data.videoUrl) {
+        const playableUrl = data.videoUrl;
+        setVeoVideoUrl(playableUrl);
+        setVeoSaving(true);
+
+        (async () => {
+          try {
+            const proxyUrl = `/api/veo/download?url=${encodeURIComponent(playableUrl)}`;
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 60000);
+            const downloadResponse = await fetch(proxyUrl, {
+              signal: controller.signal
+            });
+            clearTimeout(timeout);
+
+            if (!downloadResponse.ok) {
+              throw new Error('Failed to download generated video for storage.');
+            }
+
+            const blob = await downloadResponse.blob();
+            const extension =
+              (blob.type && blob.type.split('/')[1]) || 'mp4';
+            const cleanedExt = extension.replace(/[^a-z0-9]/gi, '') || 'mp4';
+            const fileName = `veo-video-${Date.now()}.${cleanedExt}`;
+            const file = new File([blob], fileName, {
+              type: blob.type || 'video/mp4'
+            });
+            const uploadResult = await uploadFileSource(file);
+
+            if (uploadResult?.fileUrl) {
+              setVeoVideoUrl(uploadResult.fileUrl);
+            } else {
+              setVeoSaveError(
+                'Uploaded video to Firebase sources, but no download URL was returned. Using generated URL instead.'
+              );
+            }
+          } catch (error) {
+            console.error('Failed to upload Veo video to Firebase:', error);
+            setVeoSaveError(
+              error?.message ||
+                'Failed to upload the generated video to your sources.'
+            );
+          } finally {
+            setVeoSaving(false);
+          }
+        })();
+      } else {
+        setVeoError(
+          'Veo finished but did not provide a downloadable URL. See operation details below.'
+        );
+      }
+    } catch (error) {
+      console.error("Veo generation failed:", error);
+      setVeoError(
+        error?.message ||
+          'Something went wrong while generating your video. Please try again.'
+      );
+      setIsVeoGenerating(false);
+      setVeoSaving(false);
+    } finally {
+      // upload handled asynchronously
     }
   };
 
@@ -1176,6 +2432,18 @@ const handleSettings = () => {
               onClick={() => setActiveTab("dashboard")}
             >
               Dashboard
+            </button>
+            <button
+              className={`nav-tab ${activeTab === "sora" ? "active" : ""}`}
+              onClick={() => setActiveTab("sora")}
+            >
+              Sora
+            </button>
+            <button
+              className={`nav-tab ${activeTab === "veo" ? "active" : ""}`}
+              onClick={() => setActiveTab("veo")}
+            >
+              Veo
             </button>
           </div>
         </div>
@@ -1223,10 +2491,40 @@ const handleSettings = () => {
             message={message}
             setMessage={setMessage}
             isLoading={isLoading}
+            response={agentResponse}
+            error={agentError}
+            answerSources={agentSources}
+            metadata={agentMetadata}
             onSubmit={handleSubmit}
           />
         )}
         {activeTab === "dashboard" && <DashboardView activeSection={dashboardSection} onChangeSection={setDashboardSection} />}
+        {activeTab === "sora" && (
+          <SoraView
+            prompt={soraPrompt}
+            setPrompt={setSoraPrompt}
+            isGenerating={isSoraGenerating}
+            videoUrl={soraVideoUrl}
+            error={soraError}
+            isSaving={soraSaving}
+            saveError={soraSaveError}
+            rawJob={soraRawJob}
+            onSubmit={handleSoraSubmit}
+          />
+        )}
+        {activeTab === "veo" && (
+          <VeoView
+            prompt={veoPrompt}
+            setPrompt={setVeoPrompt}
+            isGenerating={isVeoGenerating}
+            videoUrl={veoVideoUrl}
+            error={veoError}
+            isSaving={veoSaving}
+            saveError={veoSaveError}
+            rawOperation={veoRawOperation}
+            onSubmit={handleVeoSubmit}
+          />
+        )}
       </main>
 
       {/* Settings Modal */}
