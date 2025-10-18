@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Growth Marketing Platform
 
-## Getting Started
+A Next.js application that helps users create, manage, and analyze content for social media platforms using AI tools.
 
-First, run the development server:
+## Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- Instagram integration with analytics and posting capabilities
+- TikTok integration for video metrics and performance tracking
+- OpenAI Sora integration for AI video generation
+- Firebase authentication and database
+- Next.js API routes for secure integrations
+- Dark/light theme support
+
+## Environment Setup
+
+This application requires several environment variables to function properly. Create a `.env.local` file in the project root with the following variables:
+
+### Firebase Configuration
+
+```
+NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your-app.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your-app
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your-app.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Instagram API
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+```
+INSTAGRAM_CLIENT_ID=your_instagram_client_id
+INSTAGRAM_CLIENT_SECRET=your_instagram_client_secret
+INSTAGRAM_REDIRECT_URI=https://yourdomain.com/api/auth/instagram/callback
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### TikTok API
 
-## Learn More
+```
+TIKTOK_CLIENT_KEY=your_tiktok_client_key
+TIKTOK_CLIENT_SECRET=your_tiktok_client_secret
+TIKTOK_REDIRECT_URI=https://yourdomain.com/api/auth/tiktok/callback
+```
 
-To learn more about Next.js, take a look at the following resources:
+### OpenAI API
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_SORA_BASE_URL=https://api.openai.com/v1
+OPENAI_SORA_MODEL=sora-2
+SORA_POLL_INTERVAL_MS=5000
+SORA_MAX_POLL_ATTEMPTS=60
+SORA_PORTRAIT_HINT=Please render the video in a vertical 9:16 portrait composition suitable for mobile.
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Development
 
-## Deploy on Vercel
+```bash
+# Install dependencies
+npm install
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Run development server
+npm run dev
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Build for production
+npm run build
+
+# Start production server
+npm start
+```
+
+## Deploying to Vercel
+
+1. Push your code to GitHub
+2. Create a new project in Vercel
+3. Link your GitHub repository
+4. Configure environment variables in Vercel project settings:
+   - Go to Settings > Environment Variables
+   - Add all the variables from your `.env.local` file
+5. Deploy!
+
+## Social Media API Setup
+
+For detailed setup instructions:
+- Instagram: See [INSTAGRAM_SETUP_INSTRUCTIONS.md](./INSTAGRAM_SETUP_INSTRUCTIONS.md)
+- TikTok: See [TIKTOK_SETUP_INSTRUCTIONS.md](./TIKTOK_SETUP_INSTRUCTIONS.md)
+
+## Policy Documents
+
+These policy documents are required for Meta and TikTok app review:
+- Privacy Policy: [/privacy-policy](/privacy-policy)
+- Data Deletion Instructions: [/data-deletion](/data-deletion)
+
+## License
+
+MIT
